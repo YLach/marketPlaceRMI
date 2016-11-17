@@ -26,12 +26,12 @@ public class BankImpl extends UnicastRemoteObject implements Bank {
         AccountImpl account = (AccountImpl) accounts.get(name);
         if (account != null) {
             System.out.println("Account [" + name + "] exists!!!");
-            throw new RejectedException("Rejected: se.kth.id2212.ex2.Bank: " + bankName
+            throw new RejectedException("Rejected: Bank: " + bankName
                     + " Account for: " + name + " already exists: " + account);
         }
         account = new AccountImpl(name);
         accounts.put(name, account);
-        System.out.println("se.kth.id2212.ex2.Bank: " + bankName + " Account: " + account
+        System.out.println("Bank: " + bankName + " Account: " + account
                 + " has been created for " + name);
         return account;
     }
@@ -47,7 +47,7 @@ public class BankImpl extends UnicastRemoteObject implements Bank {
             return false;
         }
         accounts.remove(name);
-        System.out.println("se.kth.id2212.ex2.Bank: " + bankName + " Account for " + name
+        System.out.println("Bank: " + bankName + " Account for " + name
                 + " has been deleted");
         return true;
     }
