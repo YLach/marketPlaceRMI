@@ -12,19 +12,26 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class Server extends UnicastRemoteObject implements Market {
-    private static final String USAGE = "java market.Server <REGISTRY_PORT_NUMBER>";
+    private static final String USAGE = "java market.Server <LOCAL_REGISTRY_PORT_NUMBER>";
     private static final String BANK = "Nordea";
-    private static final String DEFAULT_MARKET = "market";
-    private static final int BANK_REGISTRY_PORT_NUMBER = 1099;
+    private static final String DEFAULT_MARKET_NAME = "Market";
+    private static final int DEFAULT_LOCAL_REGISTRY_PORT_NUMBER = 1099;
 
     private List<String> traders = new LinkedList<>();
-    private Map<Item, Trader> items = new TreeMap<>(); // Store Trader (and not their name) --> callback
-    private Map<Item, Trader> wishList = new TreeMap<>();
+    private AbstractMap<Item, Trader> items = new ConcurrentSkipListMap<>(); // Store Trader (and not their name) --> callback
+    private AbstractMap<Item, Trader> wishList = new ConcurrentSkipListMap<>();
     private String bankname;
     Bank bankobj;
 
+    /**
+     * Constructor
+     * @param bankName
+     * @param bankPort
+     * @throws RemoteException
+     */
     public Server(String bankName, int bankPort) throws RemoteException {
         super();
         this.bankname = bankName;
@@ -39,8 +46,8 @@ public class Server extends UnicastRemoteObject implements Market {
             bankobj = (Bank) bankRegistry.lookup(bankname);
 
         } catch (Exception e) {
-            System.out.println("The runtime failed: " + e.getMessage());
-            System.exit(0);
+            System.err.println("The runtime failed: " + e.getMessage());
+            System.exit(1);
         }
         System.out.println("Connected to bank: " + bankname);
     }
@@ -75,52 +82,112 @@ public class Server extends UnicastRemoteObject implements Market {
     }
 
     @Override
-    public synchronized void sell(Item itemToSell, Trader trader) throws RemoteException, RejectedException {
+    public void sell(Item itemToSell, Trader trader) throws RemoteException, RejectedException {
+        // Trader registered on the market ?
+        if (!traders.contains(trader.getClientName()))
+            throw new RejectedException("You are not registered on the market");
+
+        // Item to sell already on the market ?
         if (items.containsKey(itemToSell))
             throw new RejectedException("Item " + itemToSell + " already on the market.");
 
         // Get an account ?
-        Account account = bankobj.getAccount(trader.getName());
+        Account account = bankobj.getAccount(trader.getClientName());
         if (account == null)
             throw new RejectedException("You cannot sell the item " + itemToSell  +
-                    " : you do not get an account at bank :  " + bankname);
+                    " : you do not get an account at bank " + bankname);
 
         // Yes
         items.put(itemToSell, trader);
+        System.out.println(itemToSell + " puts on the market by " + trader.getClientName());
+
+        // Check if some buyers have placed a wish on that item
+        System.out.println();
         for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
-            if (entry.getKey().compareTo(itemToSell) > 0)
-                break;
-            //if (entry.getKey().getName().equals(itemToSell.getName()))
-                    // TODO : callback on entry.getValue()
+            System.out.println("Wish from " + entry.getValue().getClientName() + " : " + entry.getKey());
+        }
+
+
+        for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
+            //System.out.println("[DEBUG] " + itemToSell.compareTo(entry.getKey()));
+            if (itemToSell.compareTo(entry.getKey()) <= 0 && entry.getKey().getName().equals(itemToSell.getName())) {
+                entry.getValue().callback(itemToSell + " available on the market");
+                // Remove its wish ?
+                wishList.remove(entry.getKey());
+            }
         }
     }
 
     @Override
-    public synchronized void buy(Item itemToBuy, Trader trader) throws RemoteException, RejectedException,
+    public void buy(Item itemToBuy, Trader trader) throws RemoteException, RejectedException,
             bank.RejectedException {
+        // Trader registered on the market ?
+        if (!traders.contains(trader.getClientName()))
+            throw new RejectedException("You are not registered on the market");
+
+
         if (!items.containsKey(itemToBuy))
             throw new RejectedException("Item " + itemToBuy + " no longer on the market.");
 
         // Get an account ?
-        Account accountBuyer = bankobj.getAccount(trader.getName());
+        Account accountBuyer = bankobj.getAccount(trader.getClientName());
         if (accountBuyer == null)
-            throw new RejectedException("You cannot buy the item " + itemToBuy  +
-                    " : you do not get an account at bank :  " + bankname);
+            throw new RejectedException("You cannot buy the item " + itemToBuy +
+                    " : you do not get an account at bank " + bankname);
 
         // Enough money ?
         if (accountBuyer.getBalance() < itemToBuy.getPrice())
             throw new RejectedException("You cannot afford to buy this item : " + itemToBuy);
 
         // Yes
+        Account accountSeller = bankobj.getAccount(items.get(itemToBuy).getClientName());
         accountBuyer.withdraw(itemToBuy.getPrice());
-        Account accountSeller = bankobj.getAccount(items.get(itemToBuy).getName());
         accountSeller.deposit(itemToBuy.getPrice());
         items.remove(itemToBuy);
+        System.out.println(itemToBuy + " bought by " + trader.getClientName());
+    }
+
+
+    @Override
+    public void wish(Item item, Trader trader) throws RemoteException, RejectedException,
+            bank.RejectedException {
+        // Trader registered on the market ?
+        if (!traders.contains(trader.getClientName()))
+            throw new RejectedException("You are not registered on the market");
+
+        // Already did a wish for that item ?
+        for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
+            if (entry.getKey().getName().equals(item.getName()) && entry.getValue().equals(trader))
+                throw new RejectedException("You already placed a wish on " + item + " .");
+        }
+
+        // Someone else ?
+        if (wishList.containsKey(item))
+            throw new RejectedException("Someone eles already placed the same wish on " + item + " .");
+
+
+        wishList.put(item, trader);
+        System.out.println("Wish from " + trader.getClientName() + " : " + item);
+
+        /*System.out.println();
+        for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
+            System.out.println("Wish from " + entry.getValue().getClientName() + " : " + entry.getKey());
+        }*/
     }
 
     @Override
-    public String[] getAllItems() throws RemoteException {
-        return items.keySet().toArray(new String[items.size()]);
+    public String getAllItems() throws RemoteException {
+        StringBuilder sb  = new StringBuilder();
+        sb.append(" ------------------------------------\n");
+        sb.append("|-------- ITEMS ON THE MARKET -------|\n");
+        sb.append(" ------------------------------------\n\n");
+        if (items.size() == 0)
+            sb.append("No item available\n");
+        for (Item i : items.keySet())
+            sb.append(i.toString() + "\n");
+        sb.append("-------------------------------------");
+        //return items.keySet().toArray(new String[items.keySet().size()]);
+        return sb.toString();
     }
 
 
@@ -130,7 +197,8 @@ public class Server extends UnicastRemoteObject implements Market {
             System.exit(1);
         }
 
-        int registryPortNumber = 1099;
+        // Parse args to get the registry port number
+        int registryPortNumber = DEFAULT_LOCAL_REGISTRY_PORT_NUMBER;
         try {
             if (args.length > 0) {
                 registryPortNumber = Integer.parseInt(args[0]);
@@ -146,11 +214,13 @@ public class Server extends UnicastRemoteObject implements Market {
             } catch (RemoteException e) {
                 LocateRegistry.createRegistry(registryPortNumber);
             }
-            Naming.rebind("rmi://localhost:" + registryPortNumber + "/" + DEFAULT_MARKET,
-                    new Server(BANK, BANK_REGISTRY_PORT_NUMBER));
+
+            // Bind the market in the RMIRegistry
+            Naming.rebind("rmi://localhost:" + registryPortNumber + "/" + DEFAULT_MARKET_NAME,
+                    new Server(BANK, DEFAULT_LOCAL_REGISTRY_PORT_NUMBER));
 
         } catch (RemoteException | MalformedURLException re) {
-            System.out.println(re);
+            System.err.println(re);
             System.exit(1);
         }
     }

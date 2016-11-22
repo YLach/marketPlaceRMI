@@ -35,7 +35,7 @@ public class Item implements Serializable, Comparable<Item> {
     public String toString() {
         return "Item[" +
                 "name : " + name +
-                ", price : " + price + " SEK" +
+                ", price : $" + price +
                 ']';
     }
 

@@ -9,6 +9,7 @@ import java.security.AccessControlException;
 public class BankServer {
     private static final String USAGE = "java bank.BankServer <bank_rmi_url> <port>";
     private static final String BANK = "Nordea";
+    private static final int DEFAULT_LOCAL_REGISTRY_PORT_NUMBER = 1099;
 
     public BankServer(String bankName, int port) {
         try {
@@ -35,7 +36,7 @@ public class BankServer {
         //System.setSecurityManager(new SecurityManager());
 
         String bankName = BANK;
-        int registryPortNumber = 1099;
+        int registryPortNumber = DEFAULT_LOCAL_REGISTRY_PORT_NUMBER;
         if (args.length > 1) {
             bankName = args[0];
             try {

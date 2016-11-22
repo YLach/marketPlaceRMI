@@ -7,5 +7,5 @@ import java.rmi.RemoteException;
 public interface Trader extends Remote {
 
     void callback(String message) throws RemoteException;
-    String getName() throws RemoteException;
+    String getClientName() throws RemoteException;
 }
