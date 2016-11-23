@@ -27,14 +27,17 @@ public class Server extends UnicastRemoteObject implements Market {
     Bank bankobj;
 
     /**
-     * Constructor
+     * Constructor : to create the market remote object, we need to get first the
+     * remote bank object
      * @param bankName
      * @param bankPort
      * @throws RemoteException
      */
     public Server(String bankName, int bankPort) throws RemoteException {
-        super();
+        super(); // To export the servant class
         this.bankname = bankName;
+
+        // We get the reference on the remote bank object
         try {
             Registry bankRegistry;
             try {
@@ -53,32 +56,36 @@ public class Server extends UnicastRemoteObject implements Market {
     }
 
     @Override
-    public synchronized void register(String trader) throws RemoteException, RejectedException {
-        if (traders.contains(trader))
-            throw new RejectedException("Trader " + trader + " already registered");
-        traders.add(trader);
-        System.out.println("Trader " + trader + " registered on the market.");
+    public synchronized void register(String traderName) throws RemoteException, RejectedException {
+        if (traders.contains(traderName))
+            throw new RejectedException("Trader " + traderName + " already registered");
+        // Not already registered
+        traders.add(traderName);
+        System.out.println("Trader " + traderName + " registered on the market.");
     }
 
     @Override
-    public synchronized void unregister(String trader) throws RemoteException, RejectedException {
+    public synchronized void unregister(String traderName) throws RemoteException, RejectedException {
         // Remove all items belonging to that trader
-        if (!trader.contains(trader))
-            throw new RejectedException("Trader " + trader + " not registered");
+        if (!traders.contains(traderName))
+            throw new RejectedException("Trader " + traderName + " not registered");
+
         // TODO : Remove all objects and wishes from that trader ?
         // Remove all items belonging to this trader
         for(Map.Entry<Item, Trader> entry : items.entrySet()) {
-            if (entry.getValue().equals(trader)) //TODO surcharge equal in Trader implementation
-                items.remove(entry.getKey());
-        }
-        // Remove all wishes from this trader
-        for(Map.Entry<Item, Trader> entry : wishList.entrySet()) {
-            if (entry.getValue().equals(trader))
+            if (entry.getValue().getClientName().equals(traderName))
                 items.remove(entry.getKey());
         }
 
-        traders.remove(trader);
-        System.out.println("Trader " + trader + " unregistered from the market.");
+
+        // Remove all wishes from this trader
+        for(Map.Entry<Item, Trader> entry : wishList.entrySet()) {
+            if (entry.getValue().equals(traderName))
+                items.remove(entry.getKey());
+        }
+
+        traders.remove(traderName);
+        System.out.println("Trader " + traderName + " unregistered from the market.");
     }
 
     @Override
@@ -143,7 +150,8 @@ public class Server extends UnicastRemoteObject implements Market {
         Account accountSeller = bankobj.getAccount(items.get(itemToBuy).getClientName());
         accountBuyer.withdraw(itemToBuy.getPrice());
         accountSeller.deposit(itemToBuy.getPrice());
-        items.remove(itemToBuy);
+        Trader seller = items.remove(itemToBuy);
+        seller.callback(itemToBuy + " has been sold");
         System.out.println(itemToBuy + " bought by " + trader.getClientName());
     }
 
