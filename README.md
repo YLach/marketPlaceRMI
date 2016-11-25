@@ -1,2 +1,2 @@
 # marketPlaceRMI
-A networked marketplace using RMI (Java RMI)
+A networked marketplace using Remothe Method Invocation (Java RMI)
