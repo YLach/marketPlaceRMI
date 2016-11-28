@@ -4,9 +4,13 @@ package market;
 import java.io.Serializable;
 
 public class Item implements Serializable, Comparable<Item> {
+// Serialization = send by value
+// - convert object in bytes
+// - Reconstruct on the other side the object from the bytes
 
-    private final String name;
-    private final float price;
+
+    private final String name; // String = serializable by default
+    private final float price; // primitive type = serializable by default
 
     public Item(String name, float price) {
         this.name = name;

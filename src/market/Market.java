@@ -7,6 +7,7 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 public interface Market extends Remote {
+    // Specifies the methods that can be remotely called on the Market Object
 
     void register(String trader) throws RemoteException, RejectedException;
 

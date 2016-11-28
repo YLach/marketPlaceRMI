@@ -14,13 +14,15 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class Server extends UnicastRemoteObject implements Market {
-    private static final String USAGE = "java market.Server <LOCAL_REGISTRY_PORT_NUMBER>";
+public class MarketServer extends UnicastRemoteObject implements Market {
+    private static final String USAGE = "java market.MarketServer <LOCAL_REGISTRY_PORT_NUMBER>";
     private static final String BANK = "Nordea";
     private static final String DEFAULT_MARKET_NAME = "Market";
     private static final int DEFAULT_LOCAL_REGISTRY_PORT_NUMBER = 1099;
 
     private List<String> traders = new LinkedList<>();
+    // ConcurrentSkipListMap => to handle concurrency
+    // Lock some parts of the Map when accessed = more efficient than synchronised blocks/methods
     private AbstractMap<Item, Trader> items = new ConcurrentSkipListMap<>(); // Store Trader (and not their name) --> callback
     private AbstractMap<Item, Trader> wishList = new ConcurrentSkipListMap<>();
     private String bankname;
@@ -33,7 +35,7 @@ public class Server extends UnicastRemoteObject implements Market {
      * @param bankPort
      * @throws RemoteException
      */
-    public Server(String bankName, int bankPort) throws RemoteException {
+    public MarketServer(String bankName, int bankPort) throws RemoteException {
         super(); // To export the servant class
         this.bankname = bankName;
 
@@ -77,13 +79,13 @@ public class Server extends UnicastRemoteObject implements Market {
                 items.remove(entry.getKey());
         }
 
-
         // Remove all wishes from this trader
         for(Map.Entry<Item, Trader> entry : wishList.entrySet()) {
-            if (entry.getValue().equals(traderName))
-                items.remove(entry.getKey());
+            if (entry.getValue().getClientName().equals(traderName))
+                wishList.remove(entry.getKey());
         }
 
+        // Remove the trader from the market
         traders.remove(traderName);
         System.out.println("Trader " + traderName + " unregistered from the market.");
     }
@@ -108,17 +110,21 @@ public class Server extends UnicastRemoteObject implements Market {
         items.put(itemToSell, trader);
         System.out.println(itemToSell + " puts on the market by " + trader.getClientName());
 
-        // Check if some buyers have placed a wish on that item
-        System.out.println();
+        //Debugging
         for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
-            System.out.println("Wish from " + entry.getValue().getClientName() + " : " + entry.getKey());
+            System.out.println("Wish from " + entry.getValue().getClientName() +
+                    " : " + entry.getKey());
         }
 
 
+        // Check if some buyers have placed a wish on that itemToSell
         for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
             //System.out.println("[DEBUG] " + itemToSell.compareTo(entry.getKey()));
-            if (itemToSell.compareTo(entry.getKey()) <= 0 && entry.getKey().getName().equals(itemToSell.getName())) {
+            if ((itemToSell.compareTo(entry.getKey()) <= 0) &&
+                    (entry.getKey().getName().equals(itemToSell.getName()))) {
+                // Send callback
                 entry.getValue().callback(itemToSell + " available on the market");
+
                 // Remove its wish ?
                 wishList.remove(entry.getKey());
             }
@@ -165,13 +171,14 @@ public class Server extends UnicastRemoteObject implements Market {
 
         // Already did a wish for that item ?
         for (Map.Entry<Item, Trader> entry : wishList.entrySet()) {
-            if (entry.getKey().getName().equals(item.getName()) && entry.getValue().equals(trader))
+            if ((entry.getKey().getName().equals(item.getName())) &&
+                    (entry.getValue().equals(trader)))
                 throw new RejectedException("You already placed a wish on " + item + " .");
         }
 
         // Someone else ?
         if (wishList.containsKey(item))
-            throw new RejectedException("Someone eles already placed the same wish on " + item + " .");
+            throw new RejectedException("Someone else already placed the same wish on " + item + " .");
 
 
         wishList.put(item, trader);
@@ -225,7 +232,7 @@ public class Server extends UnicastRemoteObject implements Market {
 
             // Bind the market in the RMIRegistry
             Naming.rebind("rmi://localhost:" + registryPortNumber + "/" + DEFAULT_MARKET_NAME,
-                    new Server(BANK, DEFAULT_LOCAL_REGISTRY_PORT_NUMBER));
+                    new MarketServer(BANK, DEFAULT_LOCAL_REGISTRY_PORT_NUMBER));
 
         } catch (RemoteException | MalformedURLException re) {
             System.err.println(re);
